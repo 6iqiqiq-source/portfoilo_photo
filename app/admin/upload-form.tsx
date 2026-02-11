@@ -1,19 +1,69 @@
 "use client";
 
-import { useActionState } from "react";
-import { uploadPhoto } from "./actions";
+import { useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { savePhotoRecord } from "./actions";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function UploadForm() {
-  const [state, formAction, pending] = useActionState(
-    async (_prev: { error?: string; success?: boolean } | null, formData: FormData) => {
-      const result = await uploadPhoto(formData);
-      return result;
-    },
-    null
-  );
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    const file = formData.get("file") as File;
+    const title = (formData.get("title") as string) || "";
+
+    if (!file || file.size === 0) {
+      setMessage({ type: "error", text: "파일을 선택해주세요." });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setMessage({ type: "error", text: "이미지 파일만 업로드할 수 있습니다." });
+      return;
+    }
+
+    setPending(true);
+    setMessage(null);
+
+    const fileName = `${Date.now()}_${file.name}`;
+    const storagePath = `photos/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("photos")
+      .upload(storagePath, file, { contentType: file.type });
+
+    if (uploadError) {
+      setMessage({ type: "error", text: `업로드 실패: ${uploadError.message}` });
+      setPending(false);
+      return;
+    }
+
+    const result = await savePhotoRecord({
+      title,
+      fileName: file.name,
+      storagePath,
+    });
+
+    if (result.error) {
+      setMessage({ type: "error", text: result.error });
+    } else {
+      setMessage({ type: "success", text: "업로드 완료!" });
+      form.reset();
+    }
+
+    setPending(false);
+  };
 
   return (
-    <form action={formAction} className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
       <div>
         <label className="mb-1 block text-sm text-zinc-400">사진 파일</label>
         <input
@@ -40,8 +90,8 @@ export default function UploadForm() {
       >
         {pending ? "업로드 중..." : "업로드"}
       </button>
-      {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
-      {state?.success && <p className="text-sm text-green-400">업로드 완료!</p>}
+      {message?.type === "error" && <p className="text-sm text-red-400">{message.text}</p>}
+      {message?.type === "success" && <p className="text-sm text-green-400">{message.text}</p>}
     </form>
   );
 }

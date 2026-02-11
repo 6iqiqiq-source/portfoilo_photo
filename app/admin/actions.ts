@@ -35,39 +35,20 @@ export async function logoutAction() {
   redirect("/admin/login");
 }
 
-export async function uploadPhoto(formData: FormData) {
-  const file = formData.get("file") as File;
-  const title = (formData.get("title") as string) || "";
-  const description = (formData.get("description") as string) || "";
-
-  if (!file || file.size === 0) {
-    return { error: "파일을 선택해주세요." };
-  }
-
-  if (!file.type.startsWith("image/")) {
-    return { error: "이미지 파일만 업로드할 수 있습니다." };
-  }
-
-  const fileName = `${Date.now()}_${file.name}`;
-  const storagePath = `photos/${fileName}`;
-
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from("photos")
-    .upload(storagePath, file);
-
-  if (uploadError) {
-    return { error: `업로드 실패: ${uploadError.message}` };
-  }
-
+export async function savePhotoRecord(data: {
+  title: string;
+  fileName: string;
+  storagePath: string;
+}) {
   const {
     data: { publicUrl },
-  } = supabaseAdmin.storage.from("photos").getPublicUrl(storagePath);
+  } = supabaseAdmin.storage.from("photos").getPublicUrl(data.storagePath);
 
   const { error: dbError } = await supabaseAdmin.from("photos").insert({
-    title,
-    description,
-    file_name: file.name,
-    storage_path: storagePath,
+    title: data.title,
+    description: "",
+    file_name: data.fileName,
+    storage_path: data.storagePath,
     url: publicUrl,
   });
 
